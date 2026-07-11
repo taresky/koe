@@ -1,0 +1,69 @@
+name: Build Bluetooth Test App
+
+on:
+  push:
+    branches:
+      - ci/bluetooth-test-build
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64-lite:
+    name: Build macOS arm64 test app
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout test branch
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: bluetooth-test-arm64-lite
+
+      - name: Install build dependencies
+        run: brew install xcodegen cmake
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+
+      - name: Generate lite Xcode project
+        run: xcodegen generate --spec project-lite.yml
+        working-directory: KoeApp
+
+      - name: Build test app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Koe.xcodeproj \
+            -scheme Koe-lite \
+            -configuration Release \
+            -derivedDataPath build-ci/bluetooth-test \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+        working-directory: KoeApp
+
+      - name: Package ad-hoc signed app
+        run: |
+          set -euo pipefail
+          APP_PATH="KoeApp/build-ci/bluetooth-test/Build/Products/Release/Koe.app"
+          test -d "$APP_PATH"
+          codesign --force --deep --sign - "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Koe-Bluetooth-Test-arm64.zip
+
+      - name: Upload test app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Koe-Bluetooth-Test-arm64
+          path: Koe-Bluetooth-Test-arm64.zip
+          if-no-files-found: error
+          retention-days: 7
