@@ -44,7 +44,7 @@ pub struct PromptTemplate {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AsrSection {
-    /// Which ASR provider to use: "doubaoime" (default), "doubao", "qwen", "glm", "mimo", "mlx", "sherpa-onnx", "apple-speech"
+    /// Which ASR provider to use: "doubaoime" (default), "doubao", "qwen", "glm", "mimo", "soniox", "mlx", "sherpa-onnx", "apple-speech"
     #[serde(default = "default_asr_provider")]
     pub provider: String,
 
@@ -79,6 +79,10 @@ pub struct AsrSection {
     /// MiMo (Xiaomi) ASR configuration
     #[serde(default)]
     pub mimo: MimoAsrConfig,
+
+    /// Soniox real-time streaming ASR configuration
+    #[serde(default)]
+    pub soniox: SonioxAsrConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -311,6 +315,40 @@ impl Default for MimoAsrConfig {
             language: default_mimo_language(),
             connect_timeout_ms: default_connect_timeout(),
             final_wait_timeout_ms: default_final_wait_timeout(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SonioxAsrConfig {
+    #[serde(default = "default_soniox_url")]
+    pub url: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_soniox_model")]
+    pub model: String,
+    /// Language hint: "auto" (default), "zh", "en", "ja", etc.
+    #[serde(default = "default_soniox_language")]
+    pub language: String,
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout_ms: u64,
+    #[serde(default = "default_final_wait_timeout")]
+    pub final_wait_timeout_ms: u64,
+    /// Custom HTTP headers for WebSocket connection
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+}
+
+impl Default for SonioxAsrConfig {
+    fn default() -> Self {
+        Self {
+            url: default_soniox_url(),
+            api_key: String::new(),
+            model: default_soniox_model(),
+            language: default_soniox_language(),
+            connect_timeout_ms: default_connect_timeout(),
+            final_wait_timeout_ms: default_final_wait_timeout(),
+            headers: std::collections::HashMap::new(),
         }
     }
 }
@@ -821,6 +859,15 @@ fn default_mimo_model() -> String {
     "mimo-v2.5-asr".into()
 }
 fn default_mimo_language() -> String {
+    "auto".into()
+}
+fn default_soniox_url() -> String {
+    "wss://stt-rt.soniox.com/transcribe-websocket".into()
+}
+fn default_soniox_model() -> String {
+    "stt-rt-v5".into()
+}
+fn default_soniox_language() -> String {
     "auto".into()
 }
 fn deserialize_option_u32_lenient<'de, D>(
@@ -1647,7 +1694,7 @@ const DEFAULT_CONFIG_YAML: &str = r#"# Koe - Voice Input Tool Configuration
 # ~/.koe/config.yaml
 
 asr:
-  # ASR provider: "doubaoime" (default, free), "doubao", "qwen", "glm", "mimo", "apple-speech", "mlx", "sherpa-onnx"
+  # ASR provider: "doubaoime" (default, free), "doubao", "qwen", "glm", "mimo", "soniox", "apple-speech", "mlx", "sherpa-onnx"
   provider: "doubaoime"
 
   # DoubaoIME (豆包输入法) free ASR — no API key required, auto device registration
@@ -1702,6 +1749,17 @@ asr:
     api_key: ""          # 从 https://platform.xiaomimimo.com 获取
     model: "mimo-v2.5-asr"
     language: "auto"     # auto | zh-CN | en-US | ja-JP 等
+
+  # Soniox real-time streaming ASR (WebSocket)
+  soniox:
+    url: "wss://stt-rt.soniox.com/transcribe-websocket"
+    api_key: ""          # from https://console.soniox.com
+    model: "stt-rt-v5"   # stt-rt-v5 | stt-rt-v4 | ...
+    language: "auto"     # auto | zh | en | ja | ... (ISO 639-1 language hints)
+    connect_timeout_ms: 3000
+    final_wait_timeout_ms: 5000
+    # headers:           # custom HTTP headers for WebSocket connection
+    #   X-Custom-Header: "value"
 
   # Apple Speech local ASR (macOS 26+, zero-config, no model download)
   apple-speech:

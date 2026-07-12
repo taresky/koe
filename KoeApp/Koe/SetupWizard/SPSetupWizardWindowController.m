@@ -644,6 +644,9 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
 @property(nonatomic, strong) NSSecureTextField *asrMimoApiKeySecureField;
 @property(nonatomic, strong) NSTextField *asrMimoApiKeyField;
 @property(nonatomic, strong) NSButton *asrMimoApiKeyToggle;
+@property(nonatomic, strong) NSSecureTextField *asrSonioxApiKeySecureField;
+@property(nonatomic, strong) NSTextField *asrSonioxApiKeyField;
+@property(nonatomic, strong) NSButton *asrSonioxApiKeyToggle;
 @property(nonatomic, strong) NSButton *asrTestButton;
 @property(nonatomic, strong) NSTextField *asrTestResultLabel;
 // Doubao auth mode + new console API key
@@ -1002,6 +1005,8 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
   [self.asrProviderPopup lastItem].representedObject = @"glm";
   [self.asrProviderPopup addItemWithTitle:@"MiMo (Xiaomi)"];
   [self.asrProviderPopup lastItem].representedObject = @"mimo";
+  [self.asrProviderPopup addItemWithTitle:@"Soniox"];
+  [self.asrProviderPopup lastItem].representedObject = @"soniox";
   NSArray<NSString *> *supportedLocalProviders =
       [self.rustBridge supportedLocalProviders];
   // Add Apple Speech (macOS 26+, no model download required; also requires the
@@ -1300,6 +1305,32 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
   mimoPrivacyNotice.tag = 1011;
   mimoPrivacyNotice.hidden = YES;
   [pane addSubview:mimoPrivacyNotice];
+
+  // Soniox API Key — fixed at row 1 (same position as Qwen/GLM/MiMo)
+  CGFloat sonioxY = formStartY - rowH - rowH;
+  self.asrSonioxApiKeySecureField = [[NSSecureTextField alloc]
+      initWithFrame:NSMakeRect(fieldX, sonioxY, secFieldW, 22)];
+  self.asrSonioxApiKeySecureField.placeholderString =
+      @"API Key from console.soniox.com";
+  self.asrSonioxApiKeySecureField.font = [NSFont systemFontOfSize:13];
+  self.asrSonioxApiKeySecureField.hidden = YES;
+  [pane addSubview:self.asrSonioxApiKeySecureField];
+  self.asrSonioxApiKeyField =
+      [self formTextField:NSMakeRect(fieldX, sonioxY, secFieldW, 22)
+              placeholder:@"API Key from console.soniox.com"];
+  self.asrSonioxApiKeyField.hidden = YES;
+  [pane addSubview:self.asrSonioxApiKeyField];
+  self.asrSonioxApiKeyToggle = [self
+      eyeButtonWithFrame:NSMakeRect(fieldX + secFieldW + 4, sonioxY - 1, eyeW,
+                                    24)
+                  action:@selector(toggleSonioxApiKeyVisibility:)];
+  self.asrSonioxApiKeyToggle.hidden = YES;
+  [pane addSubview:self.asrSonioxApiKeyToggle];
+  NSTextField *sonioxKeyLabel =
+      [self formLabel:@"API Key" frame:NSMakeRect(16, sonioxY, labelW, 22)];
+  sonioxKeyLabel.tag = 1012;
+  sonioxKeyLabel.hidden = YES;
+  [pane addSubview:sonioxKeyLabel];
 
   // Test result label — positioned right after credential rows, before
   // language.
@@ -3887,6 +3918,26 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
   }
 }
 
+- (void)toggleSonioxApiKeyVisibility:(NSButton *)sender {
+  if (sender.tag == 0) {
+    self.asrSonioxApiKeyField.stringValue =
+        self.asrSonioxApiKeySecureField.stringValue;
+    self.asrSonioxApiKeySecureField.hidden = YES;
+    self.asrSonioxApiKeyField.hidden = NO;
+    sender.image = [NSImage imageWithSystemSymbolName:@"eye"
+                             accessibilityDescription:@"Hide"];
+    sender.tag = 1;
+  } else {
+    self.asrSonioxApiKeySecureField.stringValue =
+        self.asrSonioxApiKeyField.stringValue;
+    self.asrSonioxApiKeyField.hidden = YES;
+    self.asrSonioxApiKeySecureField.hidden = NO;
+    sender.image = [NSImage imageWithSystemSymbolName:@"eye.slash"
+                             accessibilityDescription:@"Show"];
+    sender.tag = 0;
+  }
+}
+
 - (void)toggleAsrApiKeyVisibility:(NSButton *)sender {
   if (sender.tag == 0) {
     self.asrApiKeyField.stringValue = self.asrApiKeySecureField.stringValue;
@@ -3952,6 +4003,9 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
     // Taller than GLM to fit the privacy notice under the API key row.
     return 360.0;
   }
+  if ([provider isEqualToString:@"soniox"]) {
+    return 340.0;
+  }
   if ([provider isEqualToString:@"apple-speech"]) {
     return 280.0;
   }
@@ -3996,9 +4050,10 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
   BOOL isQwen = [selectedProvider isEqualToString:@"qwen"];
   BOOL isGlm = [selectedProvider isEqualToString:@"glm"];
   BOOL isMimo = [selectedProvider isEqualToString:@"mimo"];
+  BOOL isSoniox = [selectedProvider isEqualToString:@"soniox"];
   BOOL isAppleSpeech = [selectedProvider isEqualToString:@"apple-speech"];
-  BOOL isModelBasedLocal =
-      !isDoubaoIme && !isDoubao && !isQwen && !isGlm && !isMimo && !isAppleSpeech;
+  BOOL isModelBasedLocal = !isDoubaoIme && !isDoubao && !isQwen && !isGlm &&
+                           !isMimo && !isSoniox && !isAppleSpeech;
 
   // Show/hide Doubao auth mode control and credential fields
   [self setHidden:!isDoubao
@@ -4082,6 +4137,14 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
   self.asrMimoApiKeySecureField.hidden = !isMimo;
   self.asrMimoApiKeyToggle.hidden = !isMimo;
 
+  // Show/hide Soniox fields
+  [self setHidden:!isSoniox
+      forViewsMatchingTags:[NSIndexSet indexSetWithIndex:1012]
+                    inView:self.currentPaneView];
+  self.asrSonioxApiKeyField.hidden = YES; // Always start hidden (secure mode)
+  self.asrSonioxApiKeySecureField.hidden = !isSoniox;
+  self.asrSonioxApiKeyToggle.hidden = !isSoniox;
+
   // Show/hide Apple Speech locale popup and asset status
   self.appleSpeechLocalePopup.hidden = !isAppleSpeech;
   [self setHidden:!isAppleSpeech
@@ -4121,7 +4184,8 @@ static void ensureCustomHotkeyInPopup(NSPopUpButton *popup, NSString *value) {
   }
 
   // Hide test button for local providers (no remote connection to test)
-  BOOL isLocal = !isDoubaoIme && !isDoubao && !isQwen && !isGlm && !isMimo;
+  BOOL isLocal =
+      !isDoubaoIme && !isDoubao && !isQwen && !isGlm && !isMimo && !isSoniox;
   self.asrTestButton.hidden = isLocal;
   self.asrTestResultLabel.hidden = isLocal;
 
@@ -4991,6 +5055,10 @@ static void appleSpeechInstallCallback(void *ctx, int32_t eventType,
     NSString *mimoApiKey = configGet(@"asr.mimo.api_key");
     self.asrMimoApiKeySecureField.stringValue = mimoApiKey;
     self.asrMimoApiKeyField.stringValue = mimoApiKey;
+    // Load Soniox fields
+    NSString *sonioxApiKey = configGet(@"asr.soniox.api_key");
+    self.asrSonioxApiKeySecureField.stringValue = sonioxApiKey;
+    self.asrSonioxApiKeyField.stringValue = sonioxApiKey;
     // Reset visibility based on selected provider
     [self asrProviderChanged:self.asrProviderPopup];
     // Select saved Apple Speech locale (always, so switching to apple-speech
@@ -5189,6 +5257,8 @@ static void appleSpeechInstallCallback(void *ctx, int32_t eventType,
                              ![provider isEqualToString:@"doubao"] &&
                              ![provider isEqualToString:@"qwen"] &&
                              ![provider isEqualToString:@"glm"] &&
+                             ![provider isEqualToString:@"mimo"] &&
+                             ![provider isEqualToString:@"soniox"] &&
                              ![provider isEqualToString:@"apple-speech"];
     if (isModelBasedLocal) {
       NSString *modelPath = self.localModelPopup.selectedItem.representedObject;
@@ -5318,6 +5388,11 @@ static void appleSpeechInstallCallback(void *ctx, int32_t eventType,
                                ? self.asrMimoApiKeyField.stringValue
                                : self.asrMimoApiKeySecureField.stringValue;
     saveOk &= configSet(@"asr.mimo.api_key", mimoApiKey);
+    // Save Soniox fields
+    NSString *sonioxApiKey = self.asrSonioxApiKeyToggle.tag == 1
+                                 ? self.asrSonioxApiKeyField.stringValue
+                                 : self.asrSonioxApiKeySecureField.stringValue;
+    saveOk &= configSet(@"asr.soniox.api_key", sonioxApiKey);
     // Save Apple Speech locale
     if ([selectedProvider isEqualToString:@"apple-speech"]) {
       NSString *locale =
@@ -6033,6 +6108,8 @@ static void appleSpeechInstallCallback(void *ctx, int32_t eventType,
     [self testGlmConnection];
   } else if ([provider isEqualToString:@"mimo"]) {
     [self testMimoConnection];
+  } else if ([provider isEqualToString:@"soniox"]) {
+    [self testSonioxConnection];
   }
 }
 
@@ -6632,6 +6709,159 @@ static void appleSpeechInstallCallback(void *ctx, int32_t eventType,
               });
             }];
   [task resume];
+}
+
+- (void)testSonioxConnection {
+  NSString *apiKey = self.asrSonioxApiKeyToggle.tag == 1
+                         ? self.asrSonioxApiKeyField.stringValue
+                         : self.asrSonioxApiKeySecureField.stringValue;
+
+  if (apiKey.length == 0) {
+    self.asrTestResultLabel.stringValue = @"Please fill in API Key first";
+    self.asrTestResultLabel.textColor = [NSColor systemOrangeColor];
+    return;
+  }
+
+  self.asrTestButton.enabled = NO;
+  self.asrTestResultLabel.stringValue = @"Testing...";
+  self.asrTestResultLabel.textColor = [NSColor secondaryLabelColor];
+
+  NSString *sonioxUrl = configGet(@"asr.soniox.url");
+  if (sonioxUrl.length == 0)
+    sonioxUrl = @"wss://stt-rt.soniox.com/transcribe-websocket";
+
+  NSURL *url = [NSURL URLWithString:sonioxUrl];
+  NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+  request.timeoutInterval = 5;
+  [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey]
+      forHTTPHeaderField:@"Authorization"];
+
+  NSURLSessionConfiguration *config =
+      [NSURLSessionConfiguration defaultSessionConfiguration];
+  config.timeoutIntervalForRequest = 5;
+  NSURLSession *session = [NSURLSession sessionWithConfiguration:config];
+  NSURLSessionWebSocketTask *wsTask =
+      [session webSocketTaskWithRequest:request];
+
+  __weak typeof(self) weakSelf = self;
+  [wsTask resume];
+
+  // Send a minimal config to validate the API key. Soniox closes with an
+  // auth error if the key is bad; a successful config accept means auth OK.
+  NSDictionary *configBody = @{
+    @"api_key" : apiKey,
+    @"model" : @"stt-rt-v5",
+    @"audio_format" : @"pcm_s16le",
+    @"sample_rate" : @16000,
+    @"num_channels" : @1,
+  };
+  NSData *configData =
+      [NSJSONSerialization dataWithJSONObject:configBody options:0 error:nil];
+  NSString *configText =
+      [[NSString alloc] initWithData:configData encoding:NSUTF8StringEncoding];
+  NSURLSessionWebSocketMessage *configMsg =
+      [[NSURLSessionWebSocketMessage alloc] initWithString:configText];
+  [wsTask sendMessage:configMsg
+      completionHandler:^(NSError *sendError) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          __strong typeof(weakSelf) strongSelf = weakSelf;
+          if (!strongSelf)
+            return;
+          if (sendError) {
+            strongSelf.asrTestButton.enabled = YES;
+            strongSelf.asrTestResultLabel.stringValue =
+                [NSString stringWithFormat:@"Error: %@",
+                                           sendError.localizedDescription];
+            strongSelf.asrTestResultLabel.textColor = [NSColor systemRedColor];
+            [wsTask
+                cancelWithCloseCode:NSURLSessionWebSocketCloseCodeNormalClosure
+                             reason:nil];
+            return;
+          }
+        });
+      }];
+
+  // Wait briefly for either an error response or a stable open connection.
+  [wsTask receiveMessageWithCompletionHandler:^(
+              NSURLSessionWebSocketMessage *message, NSError *error) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      __strong typeof(weakSelf) strongSelf = weakSelf;
+      if (!strongSelf)
+        return;
+      strongSelf.asrTestButton.enabled = YES;
+      [wsTask cancelWithCloseCode:NSURLSessionWebSocketCloseCodeNormalClosure
+                           reason:nil];
+
+      if (error) {
+        NSString *errorMsg = error.localizedDescription ?: @"";
+        if ([errorMsg.lowercaseString containsString:@"401"] ||
+            [errorMsg.lowercaseString containsString:@"unauthor"] ||
+            [errorMsg.lowercaseString containsString:@"api key"]) {
+          strongSelf.asrTestResultLabel.stringValue =
+              @"Auth failed: please check your API Key";
+          strongSelf.asrTestResultLabel.textColor = [NSColor systemRedColor];
+        } else if (error.code == NSURLErrorTimedOut) {
+          strongSelf.asrTestResultLabel.stringValue =
+              @"Connection timed out: please check your network";
+          strongSelf.asrTestResultLabel.textColor = [NSColor systemRedColor];
+        } else {
+          // Many successful Soniox tests close after empty audio; treat a
+          // clean open as connected if no auth-specific error.
+          if (wsTask.state == NSURLSessionTaskStateRunning ||
+              wsTask.state == NSURLSessionTaskStateCompleted) {
+            strongSelf.asrTestResultLabel.stringValue = @"Connected";
+            strongSelf.asrTestResultLabel.textColor =
+                [NSColor systemGreenColor];
+          } else {
+            strongSelf.asrTestResultLabel.stringValue =
+                [NSString stringWithFormat:@"Error: %@", errorMsg];
+            strongSelf.asrTestResultLabel.textColor = [NSColor systemRedColor];
+          }
+        }
+        return;
+      }
+
+      if (message.string) {
+        NSData *data =
+            [message.string dataUsingEncoding:NSUTF8StringEncoding];
+        NSDictionary *json =
+            data ? [NSJSONSerialization JSONObjectWithData:data
+                                                   options:0
+                                                     error:nil]
+                 : nil;
+        if ([json isKindOfClass:[NSDictionary class]] &&
+            (json[@"error_code"] || json[@"error_type"])) {
+          NSString *errMsg = json[@"error_message"] ?: json[@"error_type"] ?:
+                                                         @"Auth failed";
+          BOOL isAuth = [errMsg.lowercaseString containsString:@"api key"] ||
+                        [errMsg.lowercaseString containsString:@"unauthor"] ||
+                        [json[@"error_type"] isEqual:@"unauthenticated"];
+          strongSelf.asrTestResultLabel.stringValue =
+              isAuth ? @"Auth failed: please check your API Key"
+                     : [NSString stringWithFormat:@"Error: %@", errMsg];
+          strongSelf.asrTestResultLabel.textColor = [NSColor systemRedColor];
+          return;
+        }
+      }
+
+      strongSelf.asrTestResultLabel.stringValue = @"Connected";
+      strongSelf.asrTestResultLabel.textColor = [NSColor systemGreenColor];
+    });
+  }];
+
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+      dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.asrTestButton.enabled)
+          return;
+        [wsTask cancelWithCloseCode:NSURLSessionWebSocketCloseCodeNormalClosure
+                             reason:nil];
+        strongSelf.asrTestButton.enabled = YES;
+        // Still open after 5s without an error → treat as connected.
+        strongSelf.asrTestResultLabel.stringValue = @"Connected";
+        strongSelf.asrTestResultLabel.textColor = [NSColor systemGreenColor];
+      });
 }
 
 - (void)showAlert:(NSString *)message info:(NSString *)info {

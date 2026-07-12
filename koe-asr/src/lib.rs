@@ -51,6 +51,7 @@ pub mod mimo;
 pub mod mlx;
 pub mod provider;
 pub mod qwen;
+pub mod soniox;
 #[cfg(feature = "sherpa-onnx")]
 pub mod sherpa_onnx;
 pub mod transcript;
@@ -68,6 +69,7 @@ pub use mimo::MimoAsrProvider;
 pub use mlx::{MlxConfig, MlxProvider};
 pub use provider::AsrProvider;
 pub use qwen::QwenAsrProvider;
+pub use soniox::SonioxAsrProvider;
 #[cfg(feature = "sherpa-onnx")]
 pub use sherpa_onnx::{SherpaOnnxConfig, SherpaOnnxProvider};
 pub use transcript::TranscriptAggregator;

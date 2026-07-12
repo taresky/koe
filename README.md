@@ -34,7 +34,7 @@ Koe takes a different approach:
 
 ASR provider support:
 
-- **Cloud**: **Doubao (豆包)** and **Qwen (通义)** streaming ASR
+- **Cloud**: **Doubao (豆包)**, **Qwen (通义)**, **GLM (智谱)**, **MiMo (小米)**, and **Soniox** streaming ASR
 - **Local**: **Apple Speech** (macOS 26+, zero-config on-device), **MLX** (Apple Silicon, Qwen3-ASR models), and **sherpa-onnx** (CPU, streaming zipformer models)
 - **LLM**: any **OpenAI-compatible API**, or **MLX** local models (Apple Silicon, fully offline) for text correction
 - **Planned**: future ASR support may include the **OpenAI Transcriptions API**
@@ -177,11 +177,11 @@ Below is the full configuration with explanations for every field.
 
 #### ASR (Speech Recognition)
 
-Koe uses a provider-based ASR config layout. Built-in providers: **Doubao**, **Qwen**, **Apple Speech** (local, macOS 26+), **MLX** (local, Apple Silicon), and **sherpa-onnx** (local, CPU).
+Koe uses a provider-based ASR config layout. Built-in providers: **Doubao**, **Qwen**, **GLM**, **MiMo**, **Soniox**, **Apple Speech** (local, macOS 26+), **MLX** (local, Apple Silicon), and **sherpa-onnx** (local, CPU).
 
 ```yaml
 asr:
-  # ASR provider: "doubao", "qwen", "apple-speech", "mlx", "sherpa-onnx"
+  # ASR provider: "doubaoime", "doubao", "qwen", "glm", "mimo", "soniox", "apple-speech", "mlx", "sherpa-onnx"
   provider: "doubao"
 
   doubao:
@@ -240,6 +240,15 @@ asr:
     # Optional custom HTTP headers for compatible third-party WS gateways.
     # headers:
     #   X-Custom-Header: "value"
+
+  # Soniox real-time streaming ASR (WebSocket)
+  soniox:
+    url: "wss://stt-rt.soniox.com/transcribe-websocket"
+    api_key: ""            # from https://console.soniox.com
+    model: "stt-rt-v5"
+    language: "auto"       # auto | zh | en | ja | ...
+    connect_timeout_ms: 3000
+    final_wait_timeout_ms: 5000
 
   # Apple Speech local ASR (macOS 26+, system-managed assets)
   apple-speech:

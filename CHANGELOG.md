@@ -4,6 +4,11 @@ All notable user-facing changes to Koe are documented here.
 
 ## Unreleased
 
+### Added
+
+- Added **Soniox** real-time streaming ASR provider (WebSocket, `stt-rt-v5`).
+  Configure via Setup Wizard or `asr.provider: soniox` with `asr.soniox.api_key`.
+
 ### Changed
 
 - Start prepared microphone hardware on the initial trigger-down and retain a

@@ -6,7 +6,7 @@ A Rust library for streaming ASR (Automatic Speech Recognition) with a unified a
 
 - **Unified `AsrProvider` trait** — swap providers without changing application logic
 - **Streaming recognition** — receive interim, definite, and final results as audio is processed
-- **Cloud providers** — Volcengine Doubao, Doubao IME (free), Alibaba Qwen
+- **Cloud providers** — Volcengine Doubao, Doubao IME (free), Alibaba Qwen, GLM, MiMo, Soniox
 - **Local providers** — Apple Speech Framework, MLX Whisper (Apple Silicon), Sherpa-ONNX
 - **TranscriptAggregator** — built-in helper to merge streaming events into a single transcript
 - **Hotword support** — boost recognition accuracy for domain-specific vocabulary
@@ -19,6 +19,9 @@ A Rust library for streaming ASR (Automatic Speech Recognition) with a unified a
 | `DoubaoWsProvider` | Volcengine Seed-ASR | *(default)* | WebSocket | App Key + Access Key |
 | `DoubaoImeProvider` | Doubao IME | *(default)* | WebSocket | None (auto device registration) |
 | `QwenAsrProvider` | Alibaba DashScope Qwen-ASR | *(default)* | WebSocket | API Key |
+| `GlmAsrProvider` | Zhipu GLM ASR | *(default)* | HTTP + SSE | API Key |
+| `MimoAsrProvider` | Xiaomi MiMo ASR | *(default)* | HTTP + SSE | API Key |
+| `SonioxAsrProvider` | Soniox Real-Time STT | *(default)* | WebSocket | API Key |
 | `AppleSpeechProvider` | macOS Speech Framework | `apple-speech` | Local | None |
 | `MlxProvider` | MLX Whisper (Apple Silicon) | `mlx` | Local | None (local model) |
 | `SherpaOnnxProvider` | Sherpa-ONNX | `sherpa-onnx` | Local | None (local model) |

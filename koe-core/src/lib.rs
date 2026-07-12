@@ -28,7 +28,7 @@ use crate::session::{Session, SessionState};
 use koe_asr::{AppleSpeechConfig, AppleSpeechProvider};
 use koe_asr::{
     AsrConfig, AsrEvent, AsrProvider, DoubaoImeProvider, DoubaoWsProvider, GlmAsrProvider,
-    MimoAsrProvider, QwenAsrProvider, TranscriptAggregator,
+    MimoAsrProvider, QwenAsrProvider, SonioxAsrProvider, TranscriptAggregator,
 };
 #[cfg(feature = "mlx")]
 use koe_asr::{MlxConfig, MlxProvider};
@@ -464,6 +464,41 @@ pub extern "C" fn sp_core_session_begin(context: SPSessionContext) -> i32 {
                 context_messages: Vec::new(),
             };
             (config, Box::new(MimoAsrProvider::new()))
+        }
+        "soniox" => {
+            let soniox = &cfg.asr.soniox;
+            let language = if soniox.language.is_empty()
+                || soniox.language.eq_ignore_ascii_case("auto")
+            {
+                None
+            } else {
+                Some(soniox.language.clone())
+            };
+            let config = AsrConfig {
+                url: soniox.url.clone(),
+                app_key: soniox.model.clone(),
+                access_key: String::new(),
+                api_key: soniox.api_key.clone(),
+                resource_id: String::new(),
+                sample_rate_hz: 16000,
+                connect_timeout_ms: soniox.connect_timeout_ms,
+                final_wait_timeout_ms: soniox.final_wait_timeout_ms,
+                enable_ddc: false,
+                enable_itn: false,
+                enable_punc: false,
+                enable_nonstream: false,
+                hotwords: core.dictionary.clone(),
+                language,
+                custom_headers: soniox.headers.clone(),
+                end_window_size: None,
+                force_to_speech_time: None,
+                vad_segment_duration: None,
+                output_zh_variant: None,
+                enable_accelerate_text: false,
+                accelerate_score: None,
+                context_messages: Vec::new(),
+            };
+            (config, Box::new(SonioxAsrProvider::new()))
         }
         #[cfg(feature = "mlx")]
         "mlx" => {
