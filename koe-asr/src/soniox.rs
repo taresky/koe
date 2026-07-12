@@ -14,14 +14,23 @@ type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 const DEFAULT_URL: &str = "wss://stt-rt.soniox.com/transcribe-websocket";
 const DEFAULT_MODEL: &str = "stt-rt-v5";
 
+/// Endpoint-detection marker (auto speech-end). Never part of transcript text.
+const END_TOKEN: &str = "<end>";
+/// Manual-finalization marker (`{"type":"finalize"}` response). Never part of text.
+const FINALIZED_TOKEN: &str = "<fin>";
+const FINALIZE_MESSAGE: &str = r#"{"type":"finalize"}"#;
+
 /// Soniox real-time streaming ASR provider.
 ///
 /// Protocol (WebSocket):
 /// 1. Connect to `wss://stt-rt.soniox.com/transcribe-websocket`
 /// 2. Send a JSON config message (api_key, model, audio format, …)
 /// 3. Stream raw PCM audio as binary frames
-/// 4. Send an empty text frame to end the audio stream
+/// 4. On stop: send `{"type":"finalize"}` then an empty text frame (end-of-audio)
 /// 5. Receive token responses until `finished: true`
+///
+/// Special tokens from endpoint detection / finalization (`<end>`, `<fin>`) are
+/// control signals only and must never appear in the transcript.
 ///
 /// Config field mapping (via shared `AsrConfig`):
 /// - `api_key` / `access_key` → Soniox API key
@@ -33,10 +42,12 @@ pub struct SonioxAsrProvider {
     ws: Option<WsStream>,
     input_finished: bool,
     pending_events: VecDeque<AsrEvent>,
-    /// Concatenation of all finalized token texts.
+    /// Concatenation of all finalized token texts (control tokens excluded).
     final_text: String,
     /// Last full interim text we emitted (final + non-final tokens).
     last_interim: String,
+    /// Whether we have already emitted `AsrEvent::Final` for this connection.
+    emitted_final: bool,
 }
 
 impl SonioxAsrProvider {
@@ -47,7 +58,13 @@ impl SonioxAsrProvider {
             pending_events: VecDeque::new(),
             final_text: String::new(),
             last_interim: String::new(),
+            emitted_final: false,
         }
+    }
+
+    /// Soniox control tokens used for endpoint / finalize signaling.
+    fn is_control_token(text: &str) -> bool {
+        text == END_TOKEN || text == FINALIZED_TOKEN
     }
 
     fn resolve_api_key(config: &AsrConfig) -> Result<String> {
@@ -130,9 +147,10 @@ impl SonioxAsrProvider {
     /// Parse a Soniox response into ASR events.
     ///
     /// Token accumulation:
+    /// - Control tokens (`<end>`, `<fin>`) are skipped (not transcript text)
     /// - Tokens with `is_final: true` are appended to `final_text`
     /// - Non-final tokens form the provisional suffix for interim display
-    /// - `finished: true` yields a Final event
+    /// - `finished: true` yields a Final event (not Closed — session owns close)
     fn parse_response(&mut self, text: &str) -> Result<Vec<AsrEvent>> {
         log::debug!("[Soniox ASR] Received: {}", text);
 
@@ -161,6 +179,11 @@ impl SonioxAsrProvider {
                     .and_then(|t| t.as_str())
                     .unwrap_or("");
                 if token_text.is_empty() {
+                    continue;
+                }
+                // Endpoint / finalize markers are signals, not speech text.
+                if Self::is_control_token(token_text) {
+                    log::debug!("[Soniox ASR] Skipping control token: {}", token_text);
                     continue;
                 }
                 // Skip pure translation tokens if present
@@ -202,12 +225,33 @@ impl SonioxAsrProvider {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         if finished {
-            log::info!("[Soniox ASR] Final: {}", self.final_text);
-            events.push(AsrEvent::Final(self.final_text.clone()));
-            events.push(AsrEvent::Closed(None));
+            self.push_final_event(&mut events);
         }
 
         Ok(events)
+    }
+
+    /// Emit a single Final event from accumulated text (idempotent).
+    ///
+    /// Always emits once so `wait_for_final` can unblock, even when the
+    /// transcript is empty (silent take).
+    fn push_final_event(&mut self, events: &mut Vec<AsrEvent>) {
+        if self.emitted_final {
+            return;
+        }
+        self.emitted_final = true;
+        log::info!("[Soniox ASR] Final: {}", self.final_text);
+        events.push(AsrEvent::Final(self.final_text.clone()));
+    }
+
+    fn queue_final_if_needed(&mut self) {
+        if self.emitted_final {
+            return;
+        }
+        self.emitted_final = true;
+        log::info!("[Soniox ASR] Final (on close): {}", self.final_text);
+        self.pending_events
+            .push_back(AsrEvent::Final(self.final_text.clone()));
     }
 }
 
@@ -283,6 +327,7 @@ impl AsrProvider for SonioxAsrProvider {
         self.final_text.clear();
         self.last_interim.clear();
         self.input_finished = false;
+        self.emitted_final = false;
         self.pending_events.push_back(AsrEvent::Connected);
 
         log::info!("[Soniox ASR] Configured and ready");
@@ -309,8 +354,15 @@ impl AsrProvider for SonioxAsrProvider {
         }
         self.input_finished = true;
 
-        // Empty text frame signals end-of-audio to Soniox.
+        // Push-to-talk stop: finalize first so trailing non-final tokens are
+        // promoted quickly, then end the audio stream.
         if let Some(ref mut ws) = self.ws {
+            ws.send(Message::Text(FINALIZE_MESSAGE.to_string().into()))
+                .await
+                .map_err(|e| AsrError::Protocol(format!("send finalize: {e}")))?;
+            log::info!("[Soniox ASR] Finalize sent");
+
+            // Empty text frame signals end-of-audio to Soniox.
             ws.send(Message::Text(String::new().into()))
                 .await
                 .map_err(|e| AsrError::Protocol(format!("send end-of-audio: {e}")))?;
@@ -345,15 +397,11 @@ impl AsrProvider for SonioxAsrProvider {
                     let reason = frame
                         .as_ref()
                         .map(|f| format!("code={}, reason={:?}", f.code, f.reason));
-                    // If we already have finalized text but never got finished,
-                    // promote it to Final so the session still has a result.
-                    if !self.final_text.is_empty() {
-                        self.pending_events
-                            .push_back(AsrEvent::Final(self.final_text.clone()));
-                        self.pending_events.push_back(AsrEvent::Closed(reason));
-                        return Ok(self.pending_events.pop_front().unwrap());
-                    }
-                    return Ok(AsrEvent::Closed(reason));
+                    // Promote accumulated text if the server closed without
+                    // sending finished:true (e.g. after finalize).
+                    self.queue_final_if_needed();
+                    self.pending_events.push_back(AsrEvent::Closed(reason));
+                    return Ok(self.pending_events.pop_front().unwrap());
                 }
                 Some(Ok(Message::Binary(data))) => {
                     log::debug!("[Soniox ASR] Skipping binary frame ({} bytes)", data.len());
@@ -363,14 +411,10 @@ impl AsrProvider for SonioxAsrProvider {
                 }
                 Some(Err(e)) => return Err(AsrError::Protocol(e.to_string())),
                 None => {
-                    if !self.final_text.is_empty() {
-                        self.pending_events
-                            .push_back(AsrEvent::Final(self.final_text.clone()));
-                        self.pending_events
-                            .push_back(AsrEvent::Closed(Some("WebSocket stream ended".into())));
-                        return Ok(self.pending_events.pop_front().unwrap());
-                    }
-                    return Ok(AsrEvent::Closed(Some("WebSocket stream ended".into())));
+                    self.queue_final_if_needed();
+                    self.pending_events
+                        .push_back(AsrEvent::Closed(Some("WebSocket stream ended".into())));
+                    return Ok(self.pending_events.pop_front().unwrap());
                 }
             }
         }
@@ -384,6 +428,7 @@ impl AsrProvider for SonioxAsrProvider {
         self.final_text.clear();
         self.last_interim.clear();
         self.input_finished = false;
+        self.emitted_final = false;
         Ok(())
     }
 }
@@ -512,10 +557,46 @@ mod tests {
             events.iter().find(|e| matches!(e, AsrEvent::Final(_))),
             Some(AsrEvent::Final(t)) if t == "Hello"
         ));
+        // finished must not emit Closed — unexpected Closed during the
+        // streaming loop is treated as a session error and discards text.
+        assert!(
+            !events.iter().any(|e| matches!(e, AsrEvent::Closed(_))),
+            "finished should not emit Closed"
+        );
+        assert!(p.emitted_final);
+    }
+
+    #[test]
+    fn parse_response_skips_end_and_fin_control_tokens() {
+        let mut p = SonioxAsrProvider::new();
+        // Real Soniox endpoint-detection payload: speech tokens + <end>.
+        let msg = r#"{
+            "tokens": [
+                {"text": "识别之后，好。", "is_final": true},
+                {"text": "<end>", "is_final": true},
+                {"text": "像要自己。", "is_final": true},
+                {"text": "<end>", "is_final": true}
+            ]
+        }"#;
+        let events = p.parse_response(msg).unwrap();
+        assert_eq!(p.final_text, "识别之后，好。像要自己。");
+        assert!(
+            !p.final_text.contains("<end>") && !p.final_text.contains("<fin>"),
+            "control tokens must not leak into transcript"
+        );
         assert!(matches!(
-            events.iter().find(|e| matches!(e, AsrEvent::Closed(_))),
-            Some(AsrEvent::Closed(None))
+            events.iter().find(|e| matches!(e, AsrEvent::Definite(_))),
+            Some(AsrEvent::Definite(t)) if t == "识别之后，好。像要自己。"
         ));
+
+        // Manual finalize response may include a lone <fin> token.
+        let fin_msg = r#"{
+            "tokens": [
+                {"text": "<fin>", "is_final": true}
+            ]
+        }"#;
+        let _ = p.parse_response(fin_msg).unwrap();
+        assert_eq!(p.final_text, "识别之后，好。像要自己。");
     }
 
     #[test]

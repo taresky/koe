@@ -1076,6 +1076,24 @@ async fn run_session(
                         invoke_interim_text(session_token, &aggregator.live_preview());
                     }
                     Ok(AsrEvent::Closed(reason)) => {
+                        // Providers may close the socket right after emitting
+                        // Final. If we already have a final transcript, treat
+                        // the close as a normal end so the session can paste.
+                        // An unexpected close with only interim/no text is still
+                        // an error (avoids pasting truncated garbage).
+                        if aggregator.has_final_result() {
+                            if let Some(reason) = reason.as_deref() {
+                                log::info!(
+                                    "[{session_id}] ASR closed after final transcript: {reason}"
+                                );
+                            } else {
+                                log::info!(
+                                    "[{session_id}] ASR closed after final transcript"
+                                );
+                            }
+                            asr_done = true;
+                            break;
+                        }
                         let error = format_unexpected_asr_close_error(reason.as_deref());
                         log::error!("[{session_id}] {error}");
                         asr_error = Some(error);
