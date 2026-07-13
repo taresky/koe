@@ -4,6 +4,12 @@ All notable user-facing changes to Koe are documented here.
 
 ## Unreleased
 
+### Added
+
+- Added a `double_tap` trigger mode that starts dictation on a double tap and
+  stops it on the next single tap, with protection against treating normal
+  Command-key shortcuts as trigger taps.
+
 ### Changed
 
 - Start prepared microphone hardware on the initial trigger-down and retain a
